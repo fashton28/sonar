@@ -4,6 +4,8 @@ import "./globals.css";
 import { Toaster } from "sonner";
 import { ClerkProvider, Show, SignInButton, SignUpButton, UserButton } from '@clerk/nextjs'
 
+
+
 const inter = Inter({
   variable: "--font-Inter",
   subsets: ["latin"],
