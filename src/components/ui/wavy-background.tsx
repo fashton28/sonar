@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "@/lib/utils";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { createNoise3D } from "simplex-noise";
 
 export const WavyBackground = ({
@@ -32,8 +32,8 @@ export const WavyBackground = ({
     nt: number,
     i: number,
     x: number,
-    ctx: any,
-    canvas: any;
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const getSpeed = () => {
     switch (speed) {
@@ -47,8 +47,8 @@ export const WavyBackground = ({
   };
 
   const init = () => {
-    canvas = canvasRef.current;
-    ctx = canvas.getContext("2d");
+    canvas = canvasRef.current!;
+    ctx = canvas.getContext("2d")!;
     w = ctx.canvas.width = window.innerWidth;
     h = ctx.canvas.height = window.innerHeight;
     ctx.filter = `blur(${blur}px)`;
@@ -75,7 +75,7 @@ export const WavyBackground = ({
       ctx.lineWidth = waveWidth || 50;
       ctx.strokeStyle = waveColors[i % waveColors.length];
       for (x = 0; x < w; x += 5) {
-        var y = noise(x / 800, 0.3 * i, nt) * 100;
+        const y = noise(x / 800, 0.3 * i, nt) * 100;
         ctx.lineTo(x, y + waveYOffset * 0.5); // adjust for height, currently at 50% of the container
       }
       ctx.stroke();
@@ -97,17 +97,20 @@ export const WavyBackground = ({
     return () => {
       cancelAnimationFrame(animationId);
     };
+    // init/animationId are imperative canvas setup, not reactive deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const [isSafari, setIsSafari] = useState(false);
-  useEffect(() => {
-    // I'm sorry but i have got to support it on safari.
-    setIsSafari(
-      typeof window !== "undefined" &&
-        navigator.userAgent.includes("Safari") &&
-        !navigator.userAgent.includes("Chrome")
-    );
-  }, []);
+  // I'm sorry but i have got to support it on safari.
+  // useSyncExternalStore returns the server snapshot (false) during
+  // SSR/hydration, then the real client value — no setState in an effect.
+  const isSafari = React.useSyncExternalStore(
+    () => () => {},
+    () =>
+      navigator.userAgent.includes("Safari") &&
+      !navigator.userAgent.includes("Chrome"),
+    () => false
+  );
 
   return (
     <div

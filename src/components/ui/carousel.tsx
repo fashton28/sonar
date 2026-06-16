@@ -95,6 +95,10 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
+    // Sync once with Embla's current state, then subscribe to its events.
+    // This is a legitimate external subscription, so the initial setState
+    // (inside onSelect) is intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)
