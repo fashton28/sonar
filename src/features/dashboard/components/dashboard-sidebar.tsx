@@ -96,7 +96,7 @@ export default function DashboardSidebar() {
   const pathname = usePathname(); //nice nextJS hook we can leverage here
   const clerk = useClerk();
 
-  const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
+  const [, setVoiceDialogOpen] = useState(false);
 
   const mainMenuItems: MenuItem[] = [
     {
