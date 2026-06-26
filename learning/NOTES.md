@@ -14,6 +14,12 @@
   they report it works — until then, assume they may not see type/syntax errors as they type, so
   keep being explicit about exact line-level mistakes when reviewing their code.
 
+## Workflow (set session 7)
+- There is a **course index** at `learning/index.html` linking every lesson + the reference.
+- From now on: whenever I create a new lesson, ADD a card for it to `index.html` (right unit,
+  with a concept/build/walkthrough tag), then **launch the index** (`open learning/index.html`)
+  to showcase it — instead of opening the lesson file directly. Update the progress-line count.
+
 ## Preferences
 - Teach against the **real Sonar files**, not toy examples. Always cite the actual path.
 - **Learn by progressively building the app.** (Stated explicitly in session 2.) Every concept
@@ -30,10 +36,55 @@
    `protectedProcedure` + `isAuthed` middleware + a `me` query (server-derived identity, no
    client input). Kills `userId: 'user_123'`. Requires both userId AND orgId (Sonar is org-scoped).
 4. ⬜ 0004 — First real router: `voices.list` query (Zod input, Prisma, org-scoped via `ctx.orgId`).
-5. ⬜ 0005 — Mutations: `generations.create` + input validation + return types.
-6. ⬜ 0006 — Wire the real TTS form (`useMutation`, optimistic-ish UX).
-7. ⬜ 0007 — Server Components: prefetch + HydrateClient; the no-HTTP server caller.
-8. ⬜ 0008 — Transformers (superjson), error handling, `TRPCError`.
+5. ✅ 0004 — Architecture: model-as-a-web-service. Chatterbox on Modal (Python, HTTP endpoint)
+   called from a tRPC mutation. The seam = HTTP. See LR-0003. (Pivoted here at user's request to
+   focus the rest of the arc on shipping TTS.)
+6. 🟡 0005 — Build & deploy the Modal Chatterbox Python app (`modal/chatterbox.py` WRITTEN, uses
+   standard ChatterboxTTS default voice = NO voices volume needed; no HF secret unless gated).
+   User to run: signup, `pip install modal`, `modal setup`, `modal deploy`, curl test.
+7. ✅ 0006 — Full walkthrough: bridging Modal→tRPC→client. Lesson covers all 6 files (env, tts
+   router, mount, sliders, form mutation+context, audio playback). NOT yet implemented in repo —
+   user wanted the walkthrough first; offered to implement on "implement it".
+8. ⬜ 0007 — (stretch) R2 storage + `Generation` persistence + History tab.
+9. ⬜ later — Server Components prefetch/HydrateClient; superjson transformer; `TRPCError` handling.
+
+## DEPLOYED (session 8) — TTS endpoint is LIVE
+- File: `modal/sonar_tts.py` (RENAMED from chatterbox.py — that name shadowed the chatterbox
+  package in-container and crash-looped; see LR-0004).
+- App: `sonar-chatterbox-tts`. **Endpoint URL (→ this becomes `MODAL_TTS_URL` in env.ts):**
+  `https://fashton28--sonar-chatterbox-tts-chatterbox-api.modal.run`
+- Verified: cold start ~45s (model load), warm ~2.5s. Returns RIFF WAVE mono 24kHz. Accepts
+  `{text, exaggeration, cfg_weight, temperature}`.
+- Standard ChatterboxTTS default voice works; NO HF token needed; NO voices volume.
+- TODO before real use: endpoint is OPEN (anyone with URL spends GPU). Add bearer token (Modal
+  Secret + Authorization header check) — flagged for a later lesson.
+- Next session: the tRPC bridge (lesson 0006 already written) — plug the URL into env, build
+  `tts.generate`, wire the form.
+
+## v1 TTS bridge — decisions locked (session 7)
+- Audio over JSON: tRPC `generate` returns `{ audio: "data:audio/wav;base64,..." }` (base64 a
+  data URL). R2 phase later replaces with a short URL. Audio deliberately NOT in DB.
+- Boundary name mapping: TS camelCase `cfgWeight` ↔ Python snake_case `cfg_weight` in the procedure.
+- Param reconciliation: form sliders become exaggeration / temperature / cfgWeight (Chatterbox's
+  real knobs). DROP `voiceId` from the form schema for v1 (default voice, no selector) — else the
+  form can never be valid. Prisma `Generation` keeps topP/topK/repetitionPenalty until storage phase.
+- Spinner: TanStack Form keeps `isSubmitting` true through the async `onSubmit`, so the existing
+  GenerateButton spinner/disabled wiring works for free once onSubmit calls `mutateAsync`.
+- Result sharing: tiny `TTSResultContext` in text-to-speech-form.tsx → consumed by VoicePreview.
+
+## TTS build — key facts (from official Modal docs, session 6)
+- Official example: `modal.Image.debian_slim(py3.10).uv_pip_install("chatterbox-tts==0.1.6",
+  "fastapi[standard]", "peft")`. Class `@app.cls(gpu="a10g", scaledown_window=300,
+  secrets=[Secret.from_name("hf-token")], volumes={...})`, `@modal.concurrent(max_inputs=10)`.
+  `@modal.enter def load(): self.model = ChatterboxTurboTTS.from_pretrained(device="cuda")`.
+  `@modal.fastapi_endpoint(method="POST")` returns `StreamingResponse(..., media_type="audio/wav")`.
+- Needs: HF token (modal Secret), a voices Volume with prompt wavs (example uses Lucy.wav).
+- Cold start = model load on first request (tens of seconds). Form spinner already exists; need
+  generous timeout on the tRPC fetch.
+- PARAM MISMATCH (open): form has temperature/topP/topK/repetitionPenalty; Chatterbox uses
+  exaggeration/cfg_weight/temperature. Must reconcile — verify against resemble-ai/chatterbox.
+- User MUST run interactively: `modal setup` (auth), `modal deploy`, `modal volume create/put`.
+  I can write the files; they run the CLI.
 
 ## Misconceptions to watch for
 - Thinking the router file is "where the whole backend lives" — it's the *registry*; logic,

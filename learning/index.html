@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sonar — Course Index</title>
+<link rel="stylesheet" href="assets/lesson.css">
+</head>
+<body>
+<header class="masthead">
+  <span class="brand">Sonar<span class="dot">.</span> learning</span>
+  <span class="meta">COURSE INDEX<br>tRPC · Next.js · Modal</span>
+</header>
+
+<h1>Building Sonar's Backend</h1>
+<p class="subtitle">A hands-on course in mastering the modern TypeScript backend stack — tRPC,
+Next.js, Prisma &amp; Clerk — by shipping a real voice-AI app, all the way to a GPU model on Modal.</p>
+<p class="progress-line">Progress: <span id="progress-count">0 / 6 lessons complete</span> &nbsp;·&nbsp; tick a box as you finish — it's saved in your browser.</p>
+
+<span class="unit-label">Unit I · tRPC Foundations</span>
+<hr class="unit-rule">
+
+<div class="lesson-row">
+  <input type="checkbox" class="done-box" data-lesson="0001" aria-label="Mark lesson 0001 complete">
+  <a class="lesson-card" href="lessons/0001-anatomy-of-a-trpc-request.html">
+    <span class="no">0001</span>
+    <span class="body">
+      <span class="title">The Anatomy of a tRPC Request</span>
+      <span class="blurb">The 7 files and the full request lifecycle — the mental model everything hangs on.</span>
+    </span>
+    <span class="tag concept">concept</span>
+  </a>
+</div>
+
+<div class="lesson-row">
+  <input type="checkbox" class="done-box" data-lesson="0002" aria-label="Mark lesson 0002 complete">
+  <a class="lesson-card" href="lessons/0002-first-real-round-trip.html">
+    <span class="no">0002</span>
+    <span class="body">
+      <span class="title">Your First Real Round-Trip</span>
+      <span class="blurb">A live <code>healthcheck</code> query, consumed client-side in the dashboard. End-to-end, on screen.</span>
+    </span>
+    <span class="tag build">build</span>
+  </a>
+</div>
+
+<div class="lesson-row">
+  <input type="checkbox" class="done-box" data-lesson="0003" aria-label="Mark lesson 0003 complete">
+  <a class="lesson-card" href="lessons/0003-real-context-and-protected-procedures.html">
+    <span class="no">0003</span>
+    <span class="body">
+      <span class="title">Real Context &amp; Protected Procedures</span>
+      <span class="blurb">Clerk <code>auth()</code> + Prisma in <code>ctx</code>, an <code>isAuthed</code> middleware, and a server-derived <code>me</code> query.</span>
+    </span>
+    <span class="tag build">build</span>
+  </a>
+</div>
+
+<span class="unit-label">Unit II · The TTS Pipeline (Modal × tRPC)</span>
+<hr class="unit-rule">
+
+<div class="lesson-row">
+  <input type="checkbox" class="done-box" data-lesson="0004" aria-label="Mark lesson 0004 complete">
+  <a class="lesson-card" href="lessons/0004-model-as-a-web-service.html">
+    <span class="no">0004</span>
+    <span class="body">
+      <span class="title">Your Model Is a Web Service</span>
+      <span class="blurb">The architecture decision: Python model on Modal, called over HTTP from tRPC. The seam.</span>
+    </span>
+    <span class="tag concept">concept</span>
+  </a>
+</div>
+
+<div class="lesson-row">
+  <input type="checkbox" class="done-box" data-lesson="0005" aria-label="Mark lesson 0005 complete">
+  <a class="lesson-card" href="lessons/0005-build-and-deploy-modal.html">
+    <span class="no">0005</span>
+    <span class="body">
+      <span class="title">Build &amp; Deploy the Modal Chatterbox App</span>
+      <span class="blurb">The Python side: Image, GPU class, <code>@modal.enter</code> cold-start, <code>@modal.fastapi_endpoint</code>. Deploy &amp; curl.</span>
+    </span>
+    <span class="tag build">build</span>
+  </a>
+</div>
+
+<div class="lesson-row">
+  <input type="checkbox" class="done-box" data-lesson="0006" aria-label="Mark lesson 0006 complete">
+  <a class="lesson-card" href="lessons/0006-bridging-modal-to-trpc.html">
+    <span class="no">0006</span>
+    <span class="body">
+      <span class="title">Bridging Modal to tRPC</span>
+      <span class="blurb">The full pipeline: env → <code>tts.generate</code> mutation → base64 audio → <code>&lt;audio&gt;</code> playback.</span>
+    </span>
+    <span class="tag concept">walkthrough</span>
+  </a>
+</div>
+
+<span class="unit-label">Reference</span>
+<hr class="unit-rule">
+
+<a class="ref-card" href="reference/trpc-glossary.html">
+  <span class="title">tRPC Glossary &amp; File Map</span>
+  <span class="blurb">The compressed essence — every term mapped to a real file in <code>src/trpc/</code>. Keep open while building.</span>
+</a>
+
+<div class="callout ask">
+  <span class="label">How to use this</span>
+  <p>Tick a lesson's box when you've truly got it — your progress is stored in this browser.
+  Lessons are read once; the <a href="reference/trpc-glossary.html">reference</a> you'll revisit.
+  Each card opens a self-contained lesson with a primary source and quick quizzes — do those from
+  memory. Stuck on anything? Ask your teacher (that's me) between lessons.</p>
+</div>
+
+<footer class="lesson-footer">
+  <span>Sonar · learning workspace</span>
+  <span class="next">Next up → 0007 · R2 storage &amp; Generation history</span>
+</footer>
+
+<script>
+  function updateProgress() {
+    var boxes = document.querySelectorAll('.done-box');
+    var done = 0;
+    boxes.forEach(function (b) { if (b.checked) done++; });
+    var el = document.getElementById('progress-count');
+    if (el) el.textContent = done + ' / ' + boxes.length + ' lessons complete';
+  }
+
+  document.querySelectorAll('.done-box').forEach(function (box) {
+    var key = 'sonar-lesson-' + box.dataset.lesson;
+    box.checked = localStorage.getItem(key) === '1';
+    box.closest('.lesson-row').classList.toggle('completed', box.checked);
+    box.addEventListener('change', function () {
+      localStorage.setItem(key, box.checked ? '1' : '0');
+      box.closest('.lesson-row').classList.toggle('completed', box.checked);
+      updateProgress();
+    });
+  });
+
+  updateProgress();
+</script>
+</body>
+</html>

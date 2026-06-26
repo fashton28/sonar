@@ -25,6 +25,23 @@
   The global-singleton pattern Sonar already uses in `src/lib/db.ts`. Use for: avoiding
   hot-reload connection exhaustion.
 
+### Modal + Chatterbox (TTS infrastructure)
+
+- [Modal — Chatterbox TTS example](https://modal.com/docs/examples/chatterbox_tts)
+  THE reference app we adapt. Image (`uv_pip_install chatterbox-tts`, `fastapi[standard]`,
+  `peft`), GPU class (`a10g`), `@modal.enter` model load, `generate()`, `@modal.fastapi_endpoint`,
+  HF-token secret, voices Volume. Use for: the Python Modal app, the deploy command.
+- [Modal — Web endpoints (webhooks)](https://modal.com/docs/guide/webhooks)
+  How `@modal.fastapi_endpoint` exposes an HTTPS URL, request/response semantics, and auth
+  (bearer token via Secret, or proxy `Modal-Key`/`Modal-Secret` headers). Use for: securing the
+  endpoint and calling it from tRPC.
+- [Modal — Language support](https://modal.com/docs/guide#programming-language-support)
+  Modal is Python-native; JS/Go SDKs exist for invoking, but HTTP endpoints are the
+  language-agnostic seam. Use for: justifying the architecture (see LR-0003).
+- [Chatterbox (Resemble AI) — GitHub](https://github.com/resemble-ai/chatterbox)
+  The model itself. Use for: the real `generate()` parameter names (exaggeration, cfg_weight,
+  temperature) so we can reconcile the form's sliders. VERIFY the signature here before wiring.
+
 ## Wisdom (Communities)
 
 - [tRPC Discord](https://trpc.io/discord)

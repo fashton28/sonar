@@ -230,6 +230,66 @@ td code { font-size: 0.85em; }
 hr.dinkus { border: none; text-align: center; margin: 2.5rem 0; }
 hr.dinkus::after { content: "⁂"; color: var(--ink-faint); font-size: 1.1rem; }
 
+/* --- Course index -------------------------------------------------------- */
+.unit-label {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--accent); font-weight: 700;
+  margin: 2.6rem 0 0.2rem; display: block;
+}
+.unit-rule { border: none; border-top: 1px solid var(--rule); margin: 0.5rem 0 1.3rem; }
+
+.lesson-row { display: flex; align-items: stretch; gap: 0.75rem; margin-bottom: 0.7rem; }
+.lesson-row .lesson-card { flex: 1; margin-bottom: 0; }
+.done-box {
+  flex-shrink: 0; width: 1.3rem; height: 1.3rem; margin: 0; align-self: center;
+  accent-color: var(--accent); cursor: pointer;
+}
+.lesson-row.completed .lesson-card { background: #f1f8f7; border-color: #bfe0de; }
+.lesson-row.completed .lesson-card .title {
+  color: var(--ink-faint);
+  text-decoration: line-through; text-decoration-color: var(--accent);
+}
+
+a.lesson-card {
+  display: flex; align-items: baseline; gap: 1rem;
+  text-decoration: none; color: var(--ink);
+  border: 1px solid var(--rule); border-radius: 7px;
+  padding: 0.95rem 1.15rem; margin-bottom: 0.7rem;
+  transition: border-color 0.12s, background 0.12s, transform 0.06s;
+}
+a.lesson-card:hover { border-color: var(--accent); background: var(--accent-soft); transform: translateX(2px); }
+a.lesson-card .no {
+  font-family: ui-monospace, monospace; font-size: 0.8rem; font-weight: 700;
+  color: var(--accent); flex-shrink: 0; width: 2.4rem;
+}
+a.lesson-card .body { flex: 1; }
+a.lesson-card .title { font-weight: 700; font-size: 1.02rem; letter-spacing: -0.01em; }
+a.lesson-card .blurb { font-size: 0.86rem; color: var(--ink-soft); margin-top: 0.15rem; }
+a.lesson-card .tag {
+  flex-shrink: 0; font-family: ui-monospace, monospace; font-size: 0.66rem;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 0.2rem 0.5rem; border-radius: 99px; align-self: center;
+}
+.tag.done { background: #e3f3e8; color: #2f7d4f; }
+.tag.concept { background: #eef0ff; color: #4350b8; }
+.tag.build { background: #fdeede; color: #9a5b00; }
+
+a.ref-card {
+  display: block; text-decoration: none; color: var(--ink);
+  border: 1px dashed var(--ink-faint); border-radius: 7px;
+  padding: 0.9rem 1.15rem; margin-bottom: 0.7rem; background: #fff;
+  transition: border-color 0.12s, background 0.12s;
+}
+a.ref-card:hover { border-color: var(--accent); background: var(--accent-soft); }
+a.ref-card .title { font-weight: 700; }
+a.ref-card .blurb { font-size: 0.86rem; color: var(--ink-soft); margin-top: 0.15rem; }
+
+.progress-line {
+  font-family: ui-monospace, monospace; font-size: 0.8rem; color: var(--ink-faint);
+  margin-top: 0.4rem;
+}
+
 /* --- Print --------------------------------------------------------------- */
 @media print {
   body { background: #fff; padding: 0; max-width: none; font-size: 11pt; }

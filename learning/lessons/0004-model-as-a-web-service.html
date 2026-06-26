@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0004 — Your Model Is a Web Service</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<header class="masthead">
+  <span class="brand">Sonar<span class="dot">.</span> learning</span>
+  <span class="meta">LESSON 0004<br>~14 min · architecture</span>
+</header>
+
+<h1>Your Model Is a Web Service</h1>
+<p class="subtitle">The Chatterbox model is Python-native and needs a GPU. Your app is
+TypeScript on Vercel. This lesson is about the <em>one decision</em> that makes those two facts
+stop fighting each other — and it's the most important architectural call in the whole project.</p>
+
+<div class="callout key">
+  <span class="label">The win for this lesson</span>
+  <p>You'll be able to <strong>draw Sonar's TTS data flow</strong> end to end and <strong>defend
+  every boundary</strong> — why the model is a separate service, why TypeScript never runs the
+  model, why the browser never talks to Modal, and why HTTP (not a language bridge) is the seam.
+  No code today; we commit to the shape the next lessons fill in.</p>
+</div>
+
+<h2>The false choice: "Python or TypeScript?"</h2>
+<p>You felt the tension correctly: Chatterbox/Modal are <em>Python-native</em>
+(<a href="https://modal.com/docs/guide#programming-language-support">Modal's own docs say so</a>),
+but Sonar is TypeScript. The instinct is to pick one — run Python somehow inside Node, or find a
+TS way to do inference. <strong>Both are traps.</strong></p>
+<table>
+<thead><tr><th>Tempting but wrong</th><th>Why it hurts</th></tr></thead>
+<tbody>
+<tr><td>Spawn Python from Node / bundle Python on Vercel</td><td>Vercel has no GPU; you'd ship a fragile cross-language process bridge and a multi-GB runtime.</td></tr>
+<tr><td>Do inference in TypeScript</td><td>The model, its weights, and its ecosystem are Python + CUDA. You'd be reinventing a wheel that doesn't roll in JS.</td></tr>
+<tr><td>Let the browser call Modal directly</td><td>Leaks your Modal URL + token to every user; no auth, no validation, no org-scoping, no persistence.</td></tr>
+</tbody>
+</table>
+
+<p>The resolution: <strong>don't bridge languages inside a process — bridge them over the
+network.</strong> Each side stays fully idiomatic, and they meet at exactly one place: an HTTP
+endpoint.</p>
+
+<h2>The shape: three layers, one seam that matters</h2>
+<pre><code>┌─────────────────┐   useMutation    ┌──────────────────────┐   fetch()    ┌─────────────────────┐
+│  TTS form        │ ───────────────▶ │  tRPC procedure       │ ──────────▶ │  Modal endpoint      │
+│  (browser, TS)   │                  │  (Next server, TS)    │             │  (Python, on a GPU)  │
+│                  │ ◀─────────────── │                       │ ◀────────── │  Chatterbox.generate │
+└─────────────────┘   audio url/blob  └──────────────────────┘   wav bytes  └─────────────────────┘
+        client            ▲                    translator                          deep module
+                          │
+            never talks to Modal directly
+</code></pre>
+
+<h3>① The Modal endpoint — a "deep module"</h3>
+<p>A <strong>deep module</strong> is one with a <em>tiny interface</em> hiding <em>huge
+complexity</em>. Modal's Chatterbox service is the textbook case. Its interface is one line:</p>
+<pre><code>POST { prompt, &lt;voice + params&gt; }   →   audio/wav bytes</code></pre>
+<p>Behind that sliver, hidden completely from you: GPU allocation (an A10G), gigabytes of model
+weights, warm-loading the model once per container with <code>@modal.enter</code>, request
+concurrency, and autoscaling to zero when idle. You will summon all of it with a single
+<code>fetch()</code>. That asymmetry — trivial to call, mountainous inside — is exactly what good
+architecture buys you.</p>
+
+<h3>② The tRPC procedure — the translator (and the bouncer)</h3>
+<p>This is why the call routes <em>through</em> your server instead of browser→Modal. The
+procedure is the only layer that can safely own:</p>
+<ul>
+  <li><strong>Secrets</strong> — the Modal URL and auth token live in server env, never shipped to the browser.</li>
+  <li><strong>Auth + tenancy</strong> — it's a <code>protectedProcedure</code> (Lesson 0003): real user, guaranteed <code>ctx.orgId</code>.</li>
+  <li><strong>Validation</strong> — Zod parses the text + params before a single GPU-second is spent.</li>
+  <li><strong>Persistence</strong> — later, it writes the <code>Generation</code> row and stores the WAV in R2.</li>
+</ul>
+<p>The browser stays dumb on purpose: it asks <em>your</em> API for audio and plays the result.
+It never learns that Modal exists.</p>
+
+<h3>③ The client — fire a mutation, play the result</h3>
+<p>Generating audio is a <em>write</em> (it costs money, creates a record), so it's a
+<strong>mutation</strong>, not a query. You already know the hook shape from Lesson 0002 —
+<code>useMutation(trpc.tts.generate.mutationOptions())</code> — wired to your existing form's
+<code>onSubmit</code>.</p>
+
+<div class="callout key">
+  <span class="label">The payoff of the seam: swappability</span>
+  <p>Because the boundary is plain HTTP, the model provider is a <em>detail</em>. Move from Modal
+  to RunPod, or swap Chatterbox for another model, and <strong>only the inside of one tRPC
+  function changes</strong>. The form, the client, the DB, the auth — untouched. A clean seam is
+  an option you can exercise later for free.</p>
+</div>
+
+<h2>The serverless-GPU reality (so you're not surprised)</h2>
+<p>Modal scales to zero. The first request after idle pays a <strong>cold start</strong>: a
+container boots and <code>@modal.enter</code> loads the model (this can take tens of seconds).
+Warm requests are fast. The example keeps containers alive with a <code>scaledown_window</code>
+(~5 min) and allows ~10 concurrent requests per container. Design implication for Sonar: your
+mutation may take a while on a cold path — the form's "Generating…" spinner (already built!) and
+a generous timeout matter. <a href="https://modal.com/docs/guide/webhooks">Modal web endpoints</a>
+have "all the superpowers of Modal Functions" — GPUs, Secrets, Volumes, autoscaling.</p>
+
+<h2>What we'll actually build (the file inventory)</h2>
+<table>
+<thead><tr><th>Where</th><th>What</th><th>Language</th></tr></thead>
+<tbody>
+<tr><td><code>modal/chatterbox.py</code> (new)</td><td>The Modal app: Image, GPU class, <code>@modal.enter</code> load, <code>generate</code>, <code>@modal.fastapi_endpoint</code></td><td>Python</td></tr>
+<tr><td>Modal cloud</td><td><code>modal deploy</code> → a stable HTTPS URL + a secret token</td><td>—</td></tr>
+<tr><td><code>src/lib/env.ts</code></td><td>Add <code>MODAL_TTS_URL</code> (+ auth token) to the validated env</td><td>TS</td></tr>
+<tr><td><code>src/trpc/routers/tts.ts</code> (new)</td><td><code>generate</code> mutation: Zod input → <code>fetch()</code> Modal → return audio</td><td>TS</td></tr>
+<tr><td><code>src/trpc/routers/_app.ts</code></td><td>Mount the new <code>tts</code> sub-router</td><td>TS</td></tr>
+<tr><td>The TTS form</td><td>Wire <code>onSubmit</code> → <code>useMutation</code> → play audio</td><td>TS</td></tr>
+</tbody>
+</table>
+
+<div class="callout watch">
+  <span class="label">Open question we'll resolve in code, not guess</span>
+  <p>Your form sends <code>temperature, topP, topK, repetitionPenalty</code>. Chatterbox's real
+  <code>generate()</code> exposes a <em>different</em> set (e.g. <code>exaggeration</code>,
+  <code>cfg_weight</code>, <code>temperature</code>). Mapping the form to the model's actual knobs
+  is a deliberate build step — we'll read the <code>chatterbox-tts</code> signature when we write
+  the Python, then adjust the Zod schema to match reality.</p>
+</div>
+
+<hr class="dinkus">
+
+<h2>Check yourself</h2>
+<div class="quiz">
+  <div class="q"><span class="num">Q1</span>Why does the TTS call route through tRPC instead of the browser calling Modal directly?</div>
+  <button class="opt" data-correct="false">Because browsers are technically unable to send POST requests</button>
+  <button class="opt" data-correct="true">So secrets, auth, validation and persistence stay server-side</button>
+  <button class="opt" data-correct="false">Because Modal only accepts requests originating from Python</button>
+  <div class="explain">The procedure is the bouncer: it holds the Modal URL + token, enforces auth and org-scoping, validates input, and persists results. Direct browser→Modal would leak the token and skip all of that.</div>
+</div>
+
+<div class="quiz">
+  <div class="q"><span class="num">Q2</span>What makes the Modal endpoint a "deep module"?</div>
+  <button class="opt" data-correct="false">It contains many small endpoints each doing one thing</button>
+  <button class="opt" data-correct="true">A tiny interface hides very large internal complexity</button>
+  <button class="opt" data-correct="false">It is physically deployed deep inside your own server</button>
+  <div class="explain">One line in (text + params), audio out — but GPUs, model weights, warm-loading, and autoscaling hide behind it. Small surface, huge inside: the definition of a deep module.</div>
+</div>
+
+<div class="quiz">
+  <div class="q"><span class="num">Q3</span>Generating speech is modeled as a tRPC mutation rather than a query because…</div>
+  <button class="opt" data-correct="false">Mutations are the only calls allowed to send any input</button>
+  <button class="opt" data-correct="true">It causes side effects: cost, a new record, real work</button>
+  <button class="opt" data-correct="false">Queries cannot return binary data like audio bytes</button>
+  <div class="explain">Queries read; mutations change things. Generation spends GPU money and creates a <code>Generation</code> row — a write with side effects — so it's a mutation.</div>
+</div>
+
+<div class="source-box">
+  <span class="label">Primary sources</span>
+  <p><a href="https://modal.com/docs/examples/chatterbox_tts">Modal — Chatterbox TTS example</a>
+  (the exact app we'll adapt) and <a href="https://modal.com/docs/guide/webhooks">Modal — Web
+  endpoints</a> (how the HTTP seam is exposed). Skim the example's class + <code>@modal.enter</code>
+  + <code>@modal.fastapi_endpoint</code> shape before the build lesson.</p>
+</div>
+
+<div class="callout ask">
+  <span class="label">I'm your teacher — ask me</span>
+  <p>Want me to whiteboard cold starts, or explain <code>@modal.enter</code> vs a normal
+  constructor, or why we keep audio out of the database (R2 instead)? Ask. Next, I'll ask you two
+  scoping questions (your Modal setup + how far we push today), then we start writing the Python
+  Modal app.</p>
+</div>
+
+<footer class="lesson-footer">
+  <span><a href="../reference/trpc-glossary.html">▸ Glossary</a> · <a href="0003-real-context-and-protected-procedures.html">← 0003</a></span>
+  <span class="next">Next → 0005 · Build &amp; deploy the Modal Chatterbox app</span>
+</footer>
+
+<script>
+  document.querySelectorAll('.quiz').forEach(function (quiz) {
+    var explain = quiz.querySelector('.explain');
+    quiz.querySelectorAll('button.opt').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var correct = btn.getAttribute('data-correct') === 'true';
+        btn.classList.add(correct ? 'correct' : 'wrong');
+        if (!correct) {
+          quiz.querySelector('button.opt[data-correct="true"]').classList.add('correct');
+        }
+        quiz.querySelectorAll('button.opt').forEach(function (b) { b.disabled = true; });
+        explain.classList.add('show');
+      });
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 0006 — Bridging Modal to tRPC (the full pipeline)</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<header class="masthead">
+  <span class="brand">Sonar<span class="dot">.</span> learning</span>
+  <span class="meta">LESSON 0006<br>~22 min · full walkthrough</span>
+</header>
+
+<h1>Bridging Modal to tRPC</h1>
+<p class="subtitle">The complete TypeScript half: from a slider on the form to a cloud GPU and back
+to an <code>&lt;audio&gt;</code> tag playing in the browser. Every file, every gotcha.</p>
+
+<div class="callout key">
+  <span class="label">The win for this lesson</span>
+  <p>A mental + literal map of the <em>entire</em> pipeline. After this you could implement it
+  yourself — and you'll understand the two non-obvious decisions inside it: how binary audio
+  crosses a JSON RPC boundary, and how your form's sliders map onto Chatterbox's real parameters.</p>
+</div>
+
+<h2>The whole flow on one screen</h2>
+<pre><code>TTS form  ──submit──▶  TextToSpeechForm.onSubmit
+                            │  useMutation(trpc.tts.generate)
+                            ▼
+                       tRPC  tts.generate  (protectedProcedure, server)
+                            │  1. Zod-validate text + params
+                            │  2. fetch(env.MODAL_TTS_URL, {text, cfg_weight, …})
+                            ▼
+                       Modal endpoint (Python, GPU)  →  audio/wav bytes
+                            │  3. arrayBuffer → base64 data URL
+                            ▼
+                       returns { audio: "data:audio/wav;base64,…" }
+                            │
+                            ▼
+                       setAudioUrl(...)  →  &lt;audio src={audioUrl} autoPlay /&gt;</code></pre>
+<p>Five files change. We'll go in dependency order: <strong>env → router → mount → form
+params → client playback.</strong></p>
+
+<h2>① The endpoint URL is a server secret — <code>env.ts</code></h2>
+<p>The Modal URL must never reach the browser (Lesson 0004's rule). It belongs in the
+<em>server</em> half of your validated env, so it's impossible to import client-side.</p>
+<div class="filename">src/lib/env.ts</div>
+<pre><code>server: {
+  DATABASE_URL: z.string().url(),
+  CLERK_SECRET_KEY: z.string().min(1),
+  APP_URL: z.string().min(1),
+  MODAL_TTS_URL: z.string().url(),   // ← add this
+},</code></pre>
+<p>Add <code>MODAL_TTS_URL=https://…modal.run</code> to your <code>.env</code>. Now if it's
+missing, the app refuses to boot — a loud failure beats a mysterious one at request time.</p>
+
+<h2>② The bridge — <code>src/trpc/routers/tts.ts</code> (new)</h2>
+<p>A new sub-router with one mutation. It's a <code>protectedProcedure</code> (Lesson 0003) — only
+real, org-scoped users may spend GPU money.</p>
+<div class="filename">src/trpc/routers/tts.ts</div>
+<pre><code>import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { createTRPCRouter, protectedProcedure } from "../init";
+import { env } from "@/lib/env";
+
+const generateInput = z.object({
+  text: z.string().min(1).max(5000),
+  exaggeration: z.number().min(0).max(1),
+  cfgWeight: z.number().min(0).max(1),
+  temperature: z.number().min(0).max(2),
+});
+
+export const ttsRouter = createTRPCRouter({
+  generate: protectedProcedure
+    .input(generateInput)
+    .mutation(async ({ input }) =&gt; {
+      const res = await fetch(env.MODAL_TTS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: input.text,
+          exaggeration: input.exaggeration,
+          cfg_weight: input.cfgWeight,      // camelCase → snake_case at the boundary
+          temperature: input.temperature,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `TTS service responded ${res.status}`,
+        });
+      }
+
+      // The subtle part — see callout below:
+      const bytes = await res.arrayBuffer();
+      const base64 = Buffer.from(bytes).toString("base64");
+      return { audio: `data:audio/wav;base64,${base64}` };
+    }),
+});</code></pre>
+
+<div class="callout key">
+  <span class="label">Subtlety #1 — binary audio over a JSON boundary</span>
+  <p>tRPC speaks JSON. Modal hands back raw <code>audio/wav</code> <em>bytes</em>. Bytes aren't
+  JSON. So we read them as an <code>ArrayBuffer</code>, <strong>base64-encode</strong> them into a
+  <code>data:</code> URL, and return that string. The browser can drop a data URL straight into
+  <code>&lt;audio src&gt;</code> — no Blob juggling. Trade-off: base64 is ~33% larger and the
+  whole clip passes through your server's memory. Perfect for v1; the storage phase replaces it
+  with "upload to R2, return a short URL" — which is exactly why we kept audio <em>out</em> of the
+  database.</p>
+</div>
+
+<div class="callout watch">
+  <span class="label">Subtlety #1b — the boundary is where names get translated</span>
+  <p>Your TS uses <code>cfgWeight</code> (camelCase, idiomatic JS); Python/Chatterbox wants
+  <code>cfg_weight</code> (snake_case). The tRPC procedure is the natural place to translate. Each
+  side stays idiomatic; the adapter reconciles them. This is what "adapter" layers are <em>for</em>.</p>
+</div>
+
+<h2>③ Mount the sub-router — <code>_app.ts</code></h2>
+<p>Routers nest. <code>_app.ts</code> stays a clean table of contents; the TTS logic lives in its
+own file.</p>
+<div class="filename">src/trpc/routers/_app.ts</div>
+<pre><code>import { ttsRouter } from "./tts";
+
+export const appRouter = createTRPCRouter({
+  hello: /* … */,
+  healthcheck: /* … */,
+  me: /* … */,
+  tts: ttsRouter,        // ← now the client has trpc.tts.generate
+});</code></pre>
+<p>That one line gives the client a fully-typed <code>trpc.tts.generate</code>. This is how you
+keep a growing API tidy: one file per feature, mounted here.</p>
+
+<h2>④ Reconcile the form with the model's real knobs</h2>
+<p>Your form was scaffolded with <code>temperature, topP, topK, repetitionPenalty</code> — generic
+LLM params. Chatterbox doesn't use most of those. Its real knobs are
+<code>exaggeration</code>, <code>cfg_weight</code>, and <code>temperature</code>. We make the UI
+honest. Because the settings panel <em>maps over</em> the <code>sliders</code> array, changing one
+data file re-skins the whole panel.</p>
+<div class="filename">src/features/text-to-speech/data/sliders.ts</div>
+<pre><code>interface Slider {
+  id: "exaggeration" | "temperature" | "cfgWeight";
+  /* …label/leftLabel/rightLabel/min/max/step/defaultValue… */
+}
+
+export const sliders: Slider[] = [
+  { id: "exaggeration", label: "Expressiveness",
+    leftLabel: "Flat", rightLabel: "Dramatic", min: 0, max: 1, step: 0.05, defaultValue: 0.5 },
+  { id: "temperature", label: "Creativity",
+    leftLabel: "Consistent", rightLabel: "Varied", min: 0.05, max: 1, step: 0.05, defaultValue: 0.8 },
+  { id: "cfgWeight", label: "Guidance",
+    leftLabel: "Loose", rightLabel: "Tight", min: 0, max: 1, step: 0.05, defaultValue: 0.5 },
+];</code></pre>
+<p>And the form schema must match — plus we <strong>drop <code>voiceId</code></strong> for v1
+(default voice, no selector built yet — otherwise the form can never be valid):</p>
+<div class="filename">src/features/text-to-speech/components/text-to-speech-form.tsx</div>
+<pre><code>const ttsFormSchema = z.object({
+  text: z.string().min(1, "Please enter some text"),
+  exaggeration: z.number().min(0).max(1),
+  temperature: z.number().min(0).max(2),
+  cfgWeight: z.number().min(0).max(1),
+});
+
+export const defaultTTSValues: TTSFormValues = {
+  text: "", exaggeration: 0.5, temperature: 0.8, cfgWeight: 0.5,
+};</code></pre>
+
+<div class="callout watch">
+  <span class="label">What about the <code>Generation</code> Prisma model?</span>
+  <p>It still has <code>topP/topK/repetitionPenalty</code> columns. We're <em>not</em> persisting in
+  v1, so leave the schema for now — we'll migrate those columns to the real params in the storage
+  phase, alongside writing rows. One change at a time.</p>
+</div>
+
+<h2>⑤ Client: fire the mutation, play the result</h2>
+<p>The form's <code>onSubmit</code> becomes the trigger. Beautifully, TanStack Form sets
+<code>isSubmitting = true</code> for the duration of an async <code>onSubmit</code> — so your
+existing "Generating…" spinner (the <code>GenerateButton</code>) <strong>just works</strong>, no
+extra wiring. We hold the resulting audio URL in a tiny context so the preview pane can read it.</p>
+<div class="filename">src/features/text-to-speech/components/text-to-speech-form.tsx</div>
+<pre><code>"use client";
+import { createContext, useContext, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { useTRPC } from "@/trpc/client";
+/* …zod schema + defaults from step ④… */
+
+const TTSResultContext = createContext&lt;{ audioUrl: string | null }&gt;({ audioUrl: null });
+export const useTTSResult = () =&gt; useContext(TTSResultContext);
+
+export function TextToSpeechForm({ children }: { children: React.ReactNode }) {
+  const trpc = useTRPC();
+  const [audioUrl, setAudioUrl] = useState&lt;string | null&gt;(null);
+  const generate = useMutation(trpc.tts.generate.mutationOptions());
+
+  const form = useAppForm({
+    ...ttsFormOptions,
+    defaultValues: defaultTTSValues,
+    validators: { onSubmit: ttsFormSchema },
+    onSubmit: async ({ value }) =&gt; {
+      const { audio } = await generate.mutateAsync(value);  // ← the round trip
+      setAudioUrl(audio);
+    },
+  });
+
+  return (
+    &lt;TTSResultContext.Provider value={{ audioUrl }}&gt;
+      &lt;form.AppForm&gt;{children}&lt;/form.AppForm&gt;
+    &lt;/TTSResultContext.Provider&gt;
+  );
+}</code></pre>
+
+<p>Then the placeholder becomes a player when a result exists:</p>
+<div class="filename">src/features/text-to-speech/components/voice-preview-placeholder.tsx</div>
+<pre><code>"use client";
+import { useTTSResult } from "./text-to-speech-form";
+
+export function VoicePreviewPlaceholder() {
+  const { audioUrl } = useTTSResult();
+  if (audioUrl) {
+    return (
+      &lt;div className="hidden flex-1 lg:flex h-full flex-col items-center justify-center gap-4 border-t"&gt;
+        &lt;audio controls autoPlay src={audioUrl} className="w-full max-w-md" /&gt;
+      &lt;/div&gt;
+    );
+  }
+  /* …existing placeholder JSX… */
+}</code></pre>
+
+<div class="callout key">
+  <span class="label">Why the existing spinner "just works"</span>
+  <p>You built <code>GenerateButton</code> to read <code>form.state.isSubmitting</code>. TanStack
+  Form keeps that flag true while your <em>async</em> <code>onSubmit</code> awaits the mutation. So
+  the moment you make <code>onSubmit</code> call <code>mutateAsync</code>, the spinner, the disabled
+  state, and the textarea-disable you already wired all light up for free. Good architecture pays
+  you back later.</p>
+</div>
+
+<h2>The gotchas that bite in production</h2>
+<table>
+<thead><tr><th>Gotcha</th><th>What to do</th></tr></thead>
+<tbody>
+<tr><td><strong>Cold-start timeout</strong> — first call can take 30–60s while Modal boots + loads the model.</td><td>Fine locally. On Vercel, serverless functions have max durations (hobby ~10–60s) — long generations may need a higher limit, a warm container, or the storage/polling pattern later.</td></tr>
+<tr><td><strong>Payload size</strong> — base64 of a long clip can be several MB.</td><td>OK for v1. The R2 phase returns a short URL instead, killing this entirely.</td></tr>
+<tr><td><strong>Open endpoint</strong> — anyone with the URL can spend your GPU.</td><td>Add a bearer token: a Modal Secret the procedure sends as <code>Authorization: Bearer …</code>; the Python endpoint checks it.</td></tr>
+<tr><td><strong>Runtime</strong> — <code>Buffer</code> needs the Node runtime.</td><td>tRPC route handlers are Node by default — good. Don't move this to the Edge runtime.</td></tr>
+</tbody>
+</table>
+
+<h2>Every file, at a glance</h2>
+<table>
+<thead><tr><th>File</th><th>Change</th></tr></thead>
+<tbody>
+<tr><td><code>src/lib/env.ts</code></td><td>+ <code>MODAL_TTS_URL</code></td></tr>
+<tr><td><code>src/trpc/routers/tts.ts</code> (new)</td><td><code>generate</code> mutation: validate → fetch Modal → base64</td></tr>
+<tr><td><code>src/trpc/routers/_app.ts</code></td><td>mount <code>tts: ttsRouter</code></td></tr>
+<tr><td><code>src/features/text-to-speech/data/sliders.ts</code></td><td>real Chatterbox params</td></tr>
+<tr><td><code>…/components/text-to-speech-form.tsx</code></td><td>schema + mutation + result context</td></tr>
+<tr><td><code>…/components/voice-preview-placeholder.tsx</code></td><td>render <code>&lt;audio&gt;</code> on result</td></tr>
+</tbody>
+</table>
+
+<hr class="dinkus">
+
+<h2>Check yourself</h2>
+<div class="quiz">
+  <div class="q"><span class="num">Q1</span>Why does the mutation base64-encode the audio instead of returning raw bytes?</div>
+  <button class="opt" data-correct="false">Because base64 makes the audio file meaningfully smaller</button>
+  <button class="opt" data-correct="true">Because tRPC's transport is JSON, which can't carry raw bytes</button>
+  <button class="opt" data-correct="false">Because the browser cannot play a wav from raw audio bytes</button>
+  <div class="explain">tRPC serializes to JSON; binary needs encoding to survive. base64 (slightly larger) rides inside JSON, and a <code>data:</code> URL plugs straight into <code>&lt;audio&gt;</code>. R2 later returns a plain URL instead.</div>
+</div>
+
+<div class="quiz">
+  <div class="q"><span class="num">Q2</span>Why is <code>generate</code> a <code>protectedProcedure</code>, not a <code>baseProcedure</code>?</div>
+  <button class="opt" data-correct="false">Because base procedures cannot accept any Zod input</button>
+  <button class="opt" data-correct="true">It spends GPU money and must be a real, org-scoped user</button>
+  <button class="opt" data-correct="false">Because only protected procedures are allowed to use fetch</button>
+  <div class="explain">Generation costs money and (soon) writes org-scoped rows. The auth middleware guarantees a real user + <code>ctx.orgId</code> before any GPU-second is spent.</div>
+</div>
+
+<div class="quiz">
+  <div class="q"><span class="num">Q3</span>You made <code>onSubmit</code> async and call <code>mutateAsync</code>. Why does the spinner work with no extra code?</div>
+  <button class="opt" data-correct="false">React automatically shows a spinner for any async function</button>
+  <button class="opt" data-correct="true">TanStack Form holds <code>isSubmitting</code> true while onSubmit awaits</button>
+  <button class="opt" data-correct="false">The mutation directly toggles the button's disabled attribute</button>
+  <div class="explain"><code>GenerateButton</code> reads <code>form.state.isSubmitting</code>, which TanStack Form keeps true for the lifetime of the async <code>onSubmit</code>. The spinner and disabled states you already built fire for free.</div>
+</div>
+
+<div class="source-box">
+  <span class="label">Primary sources</span>
+  <p><a href="https://trpc.io/docs/server/procedures">tRPC — Procedures &amp; mutations</a> and
+  <a href="https://modal.com/docs/guide/webhooks">Modal — Web endpoints</a>. For the
+  <code>data:</code> URL trick, MDN's
+  <a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URLs">Data URLs</a>.</p>
+</div>
+
+<div class="callout ask">
+  <span class="label">I'm your teacher — ask me</span>
+  <p>Want me to <strong>implement all six files</strong> now (so it's ready the moment your Modal
+  URL exists), or walk any piece deeper — the context choice, the base64 path, the param ranges?
+  Good questions: "Why context instead of lifting state to the view?", "How would streaming /
+  progressive playback change this?", "What changes when we add R2?" Say
+  <strong>"implement it"</strong> and I'll write them; say <strong>"next"</strong> to move on.</p>
+</div>
+
+<footer class="lesson-footer">
+  <span><a href="../reference/trpc-glossary.html">▸ Glossary</a> · <a href="0005-build-and-deploy-modal.html">← 0005</a></span>
+  <span class="next">Next → 0007 · (stretch) R2 storage + Generation history</span>
+</footer>
+
+<script>
+  document.querySelectorAll('.quiz').forEach(function (quiz) {
+    var explain = quiz.querySelector('.explain');
+    quiz.querySelectorAll('button.opt').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var correct = btn.getAttribute('data-correct') === 'true';
+        btn.classList.add(correct ? 'correct' : 'wrong');
+        if (!correct) {
+          quiz.querySelector('button.opt[data-correct="true"]').classList.add('correct');
+        }
+        quiz.querySelectorAll('button.opt').forEach(function (b) { b.disabled = true; });
+        explain.classList.add('show');
+      });
+    });
+  });
+</script>
+</body>
+</html>
