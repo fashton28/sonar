@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tRPC Glossary & Map — Sonar</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<header class="masthead">
+  <span class="brand">Sonar<span class="dot">.</span> learning</span>
+  <span class="meta">REFERENCE<br>tRPC glossary &amp; file map</span>
+</header>
+
+<h1>tRPC Glossary &amp; File Map</h1>
+<p class="subtitle">The compressed essence. Keep this open while you build. Every term below
+maps to a real file in <code>src/trpc/</code>.</p>
+
+<h2>The vocabulary</h2>
+<table>
+<thead><tr><th>Term</th><th>What it is</th><th>In Sonar</th></tr></thead>
+<tbody>
+<tr><td><strong>Procedure</strong></td><td>A single API endpoint. A <em>query</em> (read) or <em>mutation</em> (write). Built by chaining <code>.input()</code>, <code>.query()</code>/<code>.mutation()</code>.</td><td><code>hello</code> in <code>routers/_app.ts</code></td></tr>
+<tr><td><strong>Router</strong></td><td>A plain object grouping procedures (and sub-routers). The <em>registry</em> of your API. Not where logic "lives" — where it's <em>listed</em>.</td><td><code>appRouter</code></td></tr>
+<tr><td><strong>Context (<code>ctx</code>)</strong></td><td>An object built <em>fresh per request</em> and handed to every procedure. Home for the user, db handle, org id.</td><td><code>createTRPCContext</code> in <code>init.ts</code></td></tr>
+<tr><td><strong>Procedure builder</strong></td><td>A reusable, pre-configured starting point for procedures. <code>baseProcedure</code> is the raw one; you build <code>protectedProcedure</code> on top.</td><td><code>baseProcedure</code> in <code>init.ts</code></td></tr>
+<tr><td><strong>Middleware</strong></td><td>Code that wraps a procedure: runs before, calls <code>next()</code>, can extend <code>ctx</code>, runs after. How auth &amp; logging work.</td><td>not yet — lesson 0002</td></tr>
+<tr><td><strong>Link</strong></td><td>Client-side "transport plugin." <code>httpBatchLink</code> bundles many calls into one HTTP request.</td><td><code>client.tsx</code></td></tr>
+<tr><td><strong>Adapter / route handler</strong></td><td>The server entry point that turns an HTTP request into a router call.</td><td><code>app/api/trpc/[trpc]/route.ts</code></td></tr>
+<tr><td><strong>Caller / options proxy</strong></td><td>Server-side way to call procedures with <em>no HTTP</em> — direct function calls inside RSCs.</td><td><code>trpc</code> proxy in <code>server.tsx</code></td></tr>
+<tr><td><strong>Transformer</strong></td><td>Serializer (e.g. SuperJSON) so <code>Date</code>, <code>Map</code>, <code>undefined</code> survive JSON. Currently commented out.</td><td><code>query-client.ts</code>, <code>client.tsx</code></td></tr>
+<tr><td><strong><code>AppRouter</code> type</strong></td><td>The single exported <em>type</em> that gives the client end-to-end type safety. No codegen.</td><td>exported from <code>routers/_app.ts</code></td></tr>
+</tbody>
+</table>
+
+<h2>The file map</h2>
+<p>tRPC's setup feels scattered the first time. It isn't — each file owns exactly one
+concern. Read it as three groups:</p>
+
+<h3>① Define the API (server brain)</h3>
+<div class="filename">src/trpc/init.ts</div>
+<pre><code>// The factory. Creates `t`, then exports the building blocks:
+createTRPCRouter   // = t.router
+baseProcedure      // = t.procedure
+createTRPCContext  // builds ctx per request  (today: fake { userId })</code></pre>
+
+<div class="filename">src/trpc/routers/_app.ts</div>
+<pre><code>// The registry. Imports the builders, declares procedures, exports:
+export const appRouter = createTRPCRouter({ /* procedures */ });
+export type AppRouter = typeof appRouter;   // ← the magic type</code></pre>
+
+<h3>② Expose the API (transport)</h3>
+<div class="filename">src/app/api/trpc/[trpc]/route.ts</div>
+<pre><code>// HTTP front door. fetchRequestHandler routes /api/trpc/* into appRouter.
+export { handler as GET, handler as POST };</code></pre>
+
+<h3>③ Consume the API (two doors in)</h3>
+<table>
+<thead><tr><th>From</th><th>File</th><th>Mechanism</th></tr></thead>
+<tbody>
+<tr><td>Client Components</td><td><code>client.tsx</code></td><td><code>useTRPC()</code> → React Query → <code>httpBatchLink</code> → HTTP</td></tr>
+<tr><td>Server Components</td><td><code>server.tsx</code></td><td><code>trpc</code> proxy → direct call, <strong>no HTTP</strong></td></tr>
+</tbody>
+</table>
+
+<div class="callout key">
+  <span class="label">The one idea that unlocks it all</span>
+  <p>The <strong>router type flows to the client, the router code never does.</strong>
+  <code>import type { AppRouter }</code> is erased at build time — your server logic stays on
+  the server, but its <em>shape</em> (every input &amp; output type) is known to the client.
+  That's "end-to-end type safety with no codegen."</p>
+</div>
+
+<h2>Procedure-builder cheat snippet</h2>
+<pre><code>// A query (read):
+list: baseProcedure
+  .input(z.object({ limit: z.number().default(20) }))   // validate input
+  .query(({ input, ctx }) =&gt; { /* return data */ });
+
+// A mutation (write):
+create: baseProcedure
+  .input(z.object({ text: z.string().min(1) }))
+  .mutation(async ({ input, ctx }) =&gt; { /* write, return */ });</code></pre>
+<p>Two arguments reach every procedure: <code>input</code> (validated) and <code>ctx</code>
+(per-request). There is no Express <code>req</code>/<code>res</code> — that's the adapter's job.</p>
+
+<footer class="lesson-footer">
+  <span><a href="../lessons/0001-anatomy-of-a-trpc-request.html">← Lesson 0001</a></span>
+  <span class="meta">Sonar · reference · v1</span>
+</footer>
+</body>
+</html>
