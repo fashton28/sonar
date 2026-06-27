@@ -48,6 +48,21 @@
 8. ⬜ 0007 — (stretch) R2 storage + `Generation` persistence + History tab.
 9. ⬜ later — Server Components prefetch/HydrateClient; superjson transformer; `TRPCError` handling.
 
+## Session 10 — lesson 0006 synced to real code; lesson 0007 (voice cloning) written
+- 0006 updated to match actual impl: `toast` import + try/catch in onSubmit; preview markup
+  (label + user removed `h-full`). Everything else was already identical.
+- 0007 = voice cloning BLUEPRINT (user implements solo, asked for a lesson). Key decisions:
+  - Chatterbox cloning = `model.generate(text, audio_prompt_path=ref.wav)`. Ref: ~10s clean WAV.
+  - Architecture shift: voices = persistent state → forces R2 + `voices` router + the (already
+    existing!) `Voice` model. No migration needed; `ctx.prisma`/`ctx.orgId` get cashed in.
+  - Reference-to-GPU decision = Option C: store in R2, pass a short-lived presigned GET url,
+    Modal downloads + caches BY OBJECT KEY (presigned urls vary each request).
+  - Files: modal/sonar_tts.py (+voice_url), src/lib/r2.ts (new, @aws-sdk/client-s3 +
+    s3-request-presigner), src/trpc/routers/voices.ts (create/list, org-scoped), tts.ts
+    (+optional voiceId → presigned url), env.ts (+4 R2 vars), client selector + clone dialog.
+  - Security drum: every voice `where` includes `orgId: ctx.orgId`.
+- Next natural lesson 0008: persist `Generation` rows + History tab.
+
 ## DEPLOYED (session 8) — TTS endpoint is LIVE
 - File: `modal/sonar_tts.py` (RENAMED from chatterbox.py — that name shadowed the chatterbox
   package in-container and crash-looped; see LR-0004).
@@ -60,6 +75,17 @@
   Secret + Authorization header check) — flagged for a later lesson.
 - Next session: the tRPC bridge (lesson 0006 already written) — plug the URL into env, build
   `tts.generate`, wire the form.
+
+## IMPLEMENTED (session 9) — full v1 TTS bridge in repo, typechecks clean
+- env.ts: + MODAL_TTS_URL (server). .env: appended the live Modal URL.
+- src/trpc/routers/tts.ts (NEW): `generate` mutation (protected) → fetch Modal → base64 data URL.
+- _app.ts: mounted `tts: ttsRouter`.
+- sliders.ts: now exaggeration / temperature / cfgWeight (Chatterbox's real knobs).
+- text-to-speech-form.tsx: new schema (voiceId DROPPED), `useMutation`, onSubmit→mutateAsync,
+  TTSResultContext, toast.error on failure.
+- voice-preview-placeholder.tsx: "use client", renders <audio autoPlay> when audioUrl present.
+- Pending: user to restart dev + test in browser. Cold-start first gen ~30-45s. If a gen ever
+  takes >150s it returns Modal's 303 → toast error → just retry (warm).
 
 ## v1 TTS bridge — decisions locked (session 7)
 - Audio over JSON: tRPC `generate` returns `{ audio: "data:audio/wav;base64,..." }` (base64 a

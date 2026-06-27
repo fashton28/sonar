@@ -1,14 +1,61 @@
+"use client";
+
+import { useEffect } from "react";
 import Link from "next/link";
 import { AudioLines, BookOpen, Sparkles, Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  AudioPlayerProvider,
+  AudioPlayerButton,
+  AudioPlayerProgress,
+  AudioPlayerTime,
+  AudioPlayerDuration,
+  AudioPlayerSpeed,
+  useAudioPlayer,
+} from "@/components/ui/audio-player";
+import { useTTSResult } from "./text-to-speech-form";
+
+function GenerationPlayer({ audioUrl }: { audioUrl: string }) {
+  const player = useAudioPlayer();
+
+  // Load the freshly generated clip into the player when it changes.
+  useEffect(() => {
+    player.setActiveItem({ id: audioUrl, src: audioUrl });
+  }, [audioUrl, player]);
+
+  return (
+    <div className="flex w-full max-w-md items-center gap-3">
+      <AudioPlayerButton variant="outline" size="icon" className="shrink-0" />
+      <AudioPlayerTime className="text-xs tabular-nums" />
+      <AudioPlayerProgress className="flex-1" />
+      <AudioPlayerDuration className="text-xs tabular-nums" />
+      <AudioPlayerSpeed variant="ghost" size="icon" />
+    </div>
+  );
+}
 
 export function VoicePreviewPlaceholder() {
+  const { audioUrl } = useTTSResult();
+
+  if (audioUrl) {
+    return (
+      <div className="hidden flex-1 lg:flex flex-col items-center justify-center gap-4 border-t">
+        <p className="text-sm font-medium tracking-tight text-foreground">
+          Your generation
+        </p>
+        <AudioPlayerProvider>
+          <GenerationPlayer audioUrl={audioUrl} />
+        </AudioPlayerProvider>
+      </div>
+    );
+  }
+
   return (
     <div className="hidden flex-1 lg:flex h-full flex-col items-center justify-center gap-6 border-t">
       <div className="flex flex-col items-center gap-3">
         <div className="relative flex w-32 items-center justify-center">
-          
+
           <div className="absolute left-0 -rotate-30 rounded-full bg-muted p-4">
             <Volume2 className="size-5 text-muted-foreground" />
           </div>
@@ -38,4 +85,4 @@ export function VoicePreviewPlaceholder() {
       </Button>
     </div>
   );
-};
+}

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { currentUser } from '@clerk/nextjs/server';
 import { baseProcedure, createTRPCRouter, protectedProcedure } from '../init';
+import { ttsRouter } from './tts';
 
 export const appRouter = createTRPCRouter({
   hello: baseProcedure
@@ -32,6 +33,8 @@ export const appRouter = createTRPCRouter({
       name: user?.firstName ?? "there",
     };
   }),
+
+  tts: ttsRouter,
 });
 
 // export type definition of API
