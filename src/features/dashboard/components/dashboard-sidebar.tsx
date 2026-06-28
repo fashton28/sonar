@@ -117,6 +117,7 @@ export default function DashboardSidebar() {
     {
       title: "Voice cloning",
       icon: Volume2,
+      url: "/voice-cloning",
       onClick: () => setVoiceDialogOpen(true),
     },
   ];
@@ -138,8 +139,8 @@ export default function DashboardSidebar() {
 
     <Sidebar collapsible="icon">
       <SidebarHeader className="flex flex-col gap-4 pt-4">
-        <div 
-        className="flex items-center gap-2 pl-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pl-0">
+        <div
+          className="flex items-center gap-2 pl-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pl-0">
           <Image
             src="/logo.svg"
             alt="Sonar"
@@ -163,13 +164,13 @@ export default function DashboardSidebar() {
               }
               appearance={{
                 elements: {
-                  rootBox: 
+                  rootBox:
                     "w-full! group-data-[collapsible=icon]:w-auto! group-data-[collapsible=icon]:flex! group-data-[collapsible=icon]:justify-center!",
                   organizationSwitcherTrigger:
                     "w-full! justify-between! bg-white! border! border-border! rounded-md! pl-1! pr-2! py-1! gap-3! group-data-[collapsible=icon]:w-auto! group-data-[collapsible=icon]:p-1! shadow-[0px_1px_1.5px_0px_rgba(44,54,53,0.03)]!",
                   organizationPreview: "gap-2!",
                   organizationPreviewAvatarBox: "size-6! rounded-sm!",
-                  organizationPreviewTextContainer: 
+                  organizationPreviewTextContainer:
                     "text-xs! tracking-tight! font-medium! text-foreground! group-data-[collapsible=icon]:hidden!",
                   organizationPreviewMainIdentifier: "text-[13px]!",
                   organizationSwitcherTriggerIcon:
@@ -213,8 +214,8 @@ export default function DashboardSidebar() {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
-      <SidebarRail/>
+      <SidebarRail />
     </Sidebar>
-    
+
   );
 }

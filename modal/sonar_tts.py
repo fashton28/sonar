@@ -26,7 +26,9 @@ image = modal.Image.debian_slim(python_version="3.10").uv_pip_install(
 # Heavy imports run INSIDE the container only (not on your laptop when the CLI parses
 # this file). That's what `with image.imports()` is for.
 with image.imports():
+    import base64
     import io
+    import tempfile
 
     import torchaudio as ta
     from chatterbox.tts import ChatterboxTTS
@@ -55,9 +57,21 @@ class Chatterbox:
         exaggeration: float = 0.5,
         cfg_weight: float = 0.5,
         temperature: float = 0.8,
+        voice_b64: str | None = None,
     ) -> bytes:
+        # Voice cloning: if a reference clip was sent, decode it to a temp wav and
+        # condition on it. None → Chatterbox's built-in default voice (plain TTS).
+        audio_prompt_path = None
+        if voice_b64:
+            data = base64.b64decode(voice_b64)
+            tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            tmp.write(data)
+            tmp.flush()
+            audio_prompt_path = tmp.name
+
         wav = self.model.generate(
             text,
+            audio_prompt_path=audio_prompt_path,
             exaggeration=exaggeration,
             cfg_weight=cfg_weight,
             temperature=temperature,
@@ -76,6 +90,7 @@ class Chatterbox:
             item.get("exaggeration", 0.5),
             item.get("cfg_weight", 0.5),
             item.get("temperature", 0.8),
+            item.get("voice_b64"),
         )
         return StreamingResponse(io.BytesIO(audio_bytes), media_type="audio/wav")
 

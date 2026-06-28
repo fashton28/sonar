@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { currentUser } from '@clerk/nextjs/server';
 import { baseProcedure, createTRPCRouter, protectedProcedure } from '../init';
 import { ttsRouter } from './tts';
+import { cloningRouter } from './cloning';
 
 export const appRouter = createTRPCRouter({
   hello: baseProcedure
@@ -35,6 +36,7 @@ export const appRouter = createTRPCRouter({
   }),
 
   tts: ttsRouter,
+  cloning: cloningRouter,
 });
 
 // export type definition of API

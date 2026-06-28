@@ -48,6 +48,36 @@
 8. ⬜ 0007 — (stretch) R2 storage + `Generation` persistence + History tab.
 9. ⬜ later — Server Components prefetch/HydrateClient; superjson transformer; `TRPCError` handling.
 
+## Session 13 — voice cloning BACKEND implemented + tested working (user asked me to do it)
+- `_app.ts` RESTORED: hello + healthcheck (lowercase) + me (protected) + tts + cloning. Build green
+  (0 tsc errors). [Superseded the "build broken" state from session 12.]
+- `src/trpc/routers/cloning.ts` (NEW): `generate` mutation, input { text, audioBase64 } → POST Modal
+  { text, voice_b64 } → base64 data URL back.
+- `modal/sonar_tts.py`: generate() now takes `voice_b64` → base64 decode → tempfile → audio_prompt_path
+  (None = default voice). api() forwards item.get("voice_b64"). REDEPLOYED (1.4s, cached image).
+- `voice-cloning-form.tsx`: generate() WIRED — fileToBase64 (FileReader) + clone.mutateAsync +
+  setAudioUrl + toast on error.
+- TESTED end-to-end via Modal: cold/warm clone returned HTTP 200 audio/wav 457KB RIFF WAVE. WORKS.
+- Endpoint URL unchanged: https://fashton28--sonar-chatterbox-tts-chatterbox-api.modal.run
+- Still v1: NO storage/persistence; reference rides in request as base64. Next: R2 + Voice (lesson 0007).
+
+## Session 12 — voice cloning v1 (no storage): lesson 0008 + UI scaffold
+- ⚠️ BUILD BROKEN (pre-existing): user's working-tree `_app.ts` regressed to hello + healthCheck
+  only — lost `tts`/`me` mounts, `healthCheck` casing back. 9 tsc errors in test/health-check.tsx
+  + text-to-speech-form.tsx. `init.ts` (protectedProcedure) + `tts.ts` intact. User did NOT
+  authorize me to fix _app.ts (declined the question) — they'll restore it as part of their
+  backend step. DO NOT touch _app.ts unless asked.
+- Lesson 0008 = voice cloning v1, NO storage: reference clip rides in the request as base64
+  (Option A). Modal extra lines: base64 decode → tempfile → audio_prompt_path. tRPC cloning.generate
+  forwards voice_b64. Browser File→base64 via FileReader.readAsDataURL (NOT Node Buffer).
+- Built UI scaffold under src/features/voice-cloning/ (self-contained, 0 tsc errors):
+  voice-cloning-form.tsx (provider: audioFile/text/audioUrl/generate — generate() is a STUB with
+  a TODO for the user), voice-upload-panel.tsx (file picker pane), cloning-text-input-panel.tsx
+  (textarea + reused GenerateButton), cloning-preview.tsx (ElevenLabs AudioPlayer on result).
+  Route: (dashboard)/voice-cloning/{page,layout}.tsx + views/. Reuses AudioPlayer + GenerateButton.
+- USER'S backend task: restore _app.ts (tts+me+healthcheck) + add cloning router + mount it +
+  Modal redeploy with voice_b64 + fill the generate() TODO. Split agreed: I do lesson+UI, they backend.
+
 ## Session 10 — lesson 0006 synced to real code; lesson 0007 (voice cloning) written
 - 0006 updated to match actual impl: `toast` import + try/catch in onSubmit; preview markup
   (label + user removed `h-full`). Everything else was already identical.
