@@ -1,6 +1,8 @@
 # sonar
 clone voices. Cheaper alternative to ElevenLabs
 
+small, hand crafted software that's keeping my code writing skills sharp :)
+
 # Stack 
 - Next.js
 - Typescript
@@ -8,10 +10,7 @@ clone voices. Cheaper alternative to ElevenLabs
 - Tailwind + ShadCN components
 - Prisma
 
-currently working on:
+Currently working on:
 
-- protected procedures with trpc and clerk
-- implementing the tts chatterbox model through modal api. will keep it simple through [DONE]
+implementing grid with voices and taking voices to cloning + text snippets to text-to-speech
 
-CURRENTLY WORKING ON:
-- Voice cloning implementation
