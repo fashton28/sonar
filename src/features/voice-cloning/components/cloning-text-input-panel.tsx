@@ -1,5 +1,4 @@
 "use client";
-
 import { Textarea } from "@/components/ui/textarea";
 import { GenerateButton } from "@/features/text-to-speech/components/generate-button";
 import { TEXT_MAX_LENGTH } from "@/features/text-to-speech/data/constants";
