@@ -106,7 +106,7 @@ export default function DashboardSidebar() {
     },
     {
       title: "Explore voices",
-      url: "/voices",
+      url: "/explore-voices",
       icon: LayoutGrid,
     },
     {
